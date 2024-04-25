@@ -1,5 +1,5 @@
 from datetime import datetime as dt
-
+from random import shuffle
 from flask import Flask, request, jsonify
 import json
 
@@ -19,17 +19,20 @@ def main():
     data = load_user_data(user_id)
     state = data["dialog_state"]
     if state == "choice_difficult":
-        dialog_func = choice_difficult
+        resp = choice_difficult(req=request.json, resp=resp, data=data)
+        save_dialog(user_id=user_id, state=state, resp=resp)
     elif state == "choice_categories":
-        dialog_func = choice_categories
+        resp = choice_categories(req=request.json, resp=resp, data=data)
+        save_dialog(user_id=user_id, state=state, resp=resp)
     elif state == "asking":
-        dialog_func = asking
+        resp, state = asking(req=request.json, resp=resp, data=data)
+        save_dialog(user_id=user_id, state=state, resp=resp)
     elif state == "summarizing":
-        dialog_func = summarizing
+        resp = summarizing(req=request.json, resp=resp, data=data)
+        save_dialog(user_id=user_id, state=state, resp=resp)
     else:
         raise Exception(f"Неизвестное состояние диалога: {state}")
-    resp = dialog_func(req=request.json, resp=resp, data=data)
-    save_dialog(user_id=user_id, state=state, resp=resp)
+
     return jsonify(resp)
 
 
@@ -82,6 +85,8 @@ def create_user_memory(user_id, dialog_state="start_session"):
             "categories": [],
             "last_resp": None,
             "difficult": -1,
+            "used_questions": [],
+            "correct_answer": "",
             }
 
     with open(f"/data/users/{user_id}.json", 'w') as file:
@@ -141,7 +146,12 @@ def choice_difficult(req, resp, data):
 
 
 def asking(req, resp, data):
-    return resp
+    check_answer(req, resp, data)
+    if data['total_count_questions'] == data["current_question"]:
+        resp, state = do_new_question(req, resp, data)
+    state = 'summarizing'
+    resp = summarizing(req, resp, data)
+    return resp, state
 
 
 def choice_categories(req, resp, data):
@@ -149,4 +159,41 @@ def choice_categories(req, resp, data):
 
 
 def summarizing(req, resp, data):
+    return resp
+
+
+def do_new_question(req, resp, data):
+    state = 'asking'
+    used_questions = set(data["used_questions"])
+    cat = data["categories"]
+    diff = data["difficult"]
+    questions = database.give_questions(cat=cat, diff=diff)
+    for ques in questions:
+        if ques['id'] in used_questions:
+            continue
+
+        correct_answer = ques['correct_answer']
+        variants = database.get_variants(cat)[3:] + [correct_answer]
+        variants.sort()
+        data["correct_answer"] = correct_answer
+        data["current_question"] += 1
+        resp["response"]["text"] = resp["response"]["tts"] = f"\n {ques['text']}"
+        resp["response"]["buttons"] = [{"title": var,
+                                        "hide": True} for var in variants]
+        break
+    else:
+        # Все наши вопросы закончились -> пользователь считается победителем
+        state = 'summarizing'
+        resp = summarizing(req, resp, data)
+    return resp, state
+
+
+def check_answer(req, resp, data):
+    answer = req['request']["original_utterance"].lower()
+    correct_answer = data["correct_answer"]
+    if answer == correct_answer:
+        data["count_correct_answers"] += 1
+        resp['response']['text'] = resp['response']['tts'] = 'Это правильный ответ'
+    else:
+        resp['response']['text'] = resp['response']['tts'] = 'К сожалению, это не так'
     return resp
