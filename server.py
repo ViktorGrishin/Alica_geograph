@@ -163,25 +163,25 @@ def choice_categories(req, resp, data):
 
 
 def summarizing(req, resp, data):
-    resp["response"]["text"] = '''Привет, в этом навыке мы проверим твоё знание по предмету "География". Начинаем!
-    Выберите уровень сложности:'''
-    resp["response"]["tts"] = resp["response"]["text"]
-    resp["response"]["buttons"] = [
-        {
-            "title": "Базовый",
-            "hide": True
-        },
-
-        {
-            "title": "Средний",
-            "hide": True
-        },
-
-        {
-            "title": "Сложный",
-            "hide": True
-        }
-    ]
+    # resp["response"]["text"] = '''Привет, в этом навыке мы проверим твоё знание по предмету "География". Начинаем!
+    # Выберите уровень сложности:'''
+    # resp["response"]["tts"] = resp["response"]["text"]
+    # resp["response"]["buttons"] = [
+    #     {
+    #         "title": "Базовый",
+    #         "hide": True
+    #     },
+    #
+    #     {
+    #         "title": "Средний",
+    #         "hide": True
+    #     },
+    #
+    #     {
+    #         "title": "Сложный",
+    #         "hide": True
+    #     }
+    # ]
 
     return resp
 
