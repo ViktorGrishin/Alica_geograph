@@ -1,8 +1,6 @@
-from datetime import datetime as dt
-from random import shuffle
 from flask import Flask, request, jsonify
 import json
-
+from pprint import pprint
 import database
 
 app = Flask(__name__)
@@ -19,9 +17,11 @@ def main():
     data = load_user_data(user_id)
     state = data["dialog_state"]
     if state == "choice_difficult":
+        state = 'choice_categories'
         resp = choice_difficult(req=request.json, resp=resp, data=data)
         save_dialog(user_id=user_id, state=state, resp=resp)
     elif state == "choice_categories":
+        state = 'asking'
         resp = choice_categories(req=request.json, resp=resp, data=data)
         save_dialog(user_id=user_id, state=state, resp=resp)
     elif state == "asking":
@@ -71,13 +71,12 @@ def create_session(req, resp):
     ]
 
     create_user_memory(req["session"]["session_id"])
-
+    print('Create file')
     return resp
 
 
 def create_user_memory(user_id, dialog_state="start_session"):
-    data = {"last_request": dt.now(),
-            "user_id": user_id,
+    data = {"user_id": user_id,
             "total_count_questions": -1,
             "current_question": -1,
             "count_correct_answers": -1,
@@ -89,29 +88,28 @@ def create_user_memory(user_id, dialog_state="start_session"):
             "correct_answer": "",
             }
 
-    with open(f"/data/users/{user_id}.json", 'w') as file:
+    with open(f"data/users/{user_id}.json", 'w') as file:
         json.dump(data, file)
 
 
 def save_dialog(user_id, state, resp):
-    with open(f'/data/users/{user_id}.json') as file:
+    with open(f'data/users/{user_id}.json') as file:
         data = json.load(file)
         data["dialog_state"] = state
         data["last_resp"] = json.dumps(resp)
-
-    with open(f'/data/users/{user_id}.json', 'w') as file:
+    pprint(resp)
+    with open(f'data/users/{user_id}.json', 'w') as file:
         json.dump(data, file)
 
 
 def load_user_data(user_id):
-    with open(f'/data/users/{user_id}.json') as file:
+    with open(f'data/users/{user_id}.json') as file:
         data = json.load(file)
     return data
 
 
 def choice_difficult(req, resp, data):
-    answer = req['request']['original_utterance']
-    tokens = req["reqquest"]['nlu']["tokens"]
+    tokens = req["request"]['nlu']["tokens"]
 
     if len(tokens) > 1:
         resp = json.loads(data["last_resp"])
@@ -119,20 +117,26 @@ def choice_difficult(req, resp, data):
         return resp
     chosen_var = tokens[0].lower()
     if chosen_var == 'базовый':
-        data["count_quests"] = 7
-        data["diff"] = 0
+        data["total_count_questions"] = 7
+        data["difficult"] = 0
+        data["current_question"] = 1
+        data["count_correct_answers"] = 0
     elif chosen_var == 'средний':
-        data["count_quests"] = 10
-        data["diff"] = 1
+        data["total_count_questions"] = 10
+        data["difficult"] = 1
+        data["current_question"] = 1
+        data["count_correct_answers"] = 0
     elif chosen_var == 'сложный':
-        data["count_quests"] = 15
-        data["diff"] = 2
+        data["total_count_questions"] = 15
+        data["difficult"] = 2
+        data["current_question"] = 1
+        data["count_correct_answers"] = 0
     else:
         resp = json.loads(data["last_resp"])
         resp["response"]["text"] = resp["response"]['tts'] = 'Мы вас не поняли, повторите пожалуйста свой выбор'
         return resp
 
-    with open(f'/data/users/{req["session"]["session_id"]}.json', 'w') as file:
+    with open(f'data/users/{req["session"]["session_id"]}.json', 'w') as file:
         json.dump(data, file)
 
     resp["response"]["text"] = resp["response"]['tts'] = 'Теперь выберите категории вопросов'
@@ -150,7 +154,7 @@ def asking(req, resp, data):
     if data['total_count_questions'] == data["current_question"]:
         resp, state = do_new_question(req, resp, data)
     state = 'summarizing'
-    resp = summarizing(req, resp, data)
+    resp = give_result(req, resp, data)
     return resp, state
 
 
@@ -159,6 +163,26 @@ def choice_categories(req, resp, data):
 
 
 def summarizing(req, resp, data):
+    resp["response"]["text"] = '''Привет, в этом навыке мы проверим твоё знание по предмету "География". Начинаем!
+    Выберите уровень сложности:'''
+    resp["response"]["tts"] = resp["response"]["text"]
+    resp["response"]["buttons"] = [
+        {
+            "title": "Базовый",
+            "hide": True
+        },
+
+        {
+            "title": "Средний",
+            "hide": True
+        },
+
+        {
+            "title": "Сложный",
+            "hide": True
+        }
+    ]
+
     return resp
 
 
@@ -184,7 +208,7 @@ def do_new_question(req, resp, data):
     else:
         # Все наши вопросы закончились -> пользователь считается победителем
         state = 'summarizing'
-        resp = summarizing(req, resp, data)
+        resp = give_result(req, resp, data)
     return resp, state
 
 
@@ -197,3 +221,11 @@ def check_answer(req, resp, data):
     else:
         resp['response']['text'] = resp['response']['tts'] = 'К сожалению, это не так'
     return resp
+
+
+def give_result(req, resp, data):
+    return resp
+
+
+if __name__ == '__main__':
+    app.run(host='127.0.0.1', port=8000, debug=True)

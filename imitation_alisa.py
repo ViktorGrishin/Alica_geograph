@@ -1,6 +1,6 @@
 import json
 import requests
-URL = "http//:127.0.0.1:8000"
+URL = "http://127.0.0.1:8000/post"
 
 
 base = {
@@ -64,4 +64,5 @@ while True:
     res["request"]["original_utterance"] = text
     res["request"]["nlu"]["tokens"] = tokens[:]
     data = json.dumps(res)
-    requests.post(url=URL, data=data)
+    resp = requests.post(url=URL, data=res)
+
