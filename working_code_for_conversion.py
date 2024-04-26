@@ -42,9 +42,5 @@ with open('need.txt', 'r') as text:
         else:
             string.append(i)
 
-for key, value in names_dict.items():
-    print(f'Ключ: {key}, Значение: {value}')
-    print('\n')
-
 print(names_dict)
 # print(*lst, sep='\n')

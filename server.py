@@ -1,8 +1,7 @@
 from flask import Flask, request, jsonify
 import json
-from pprint import pprint
+import logging
 import database
-
 app = Flask(__name__)
 
 
@@ -10,25 +9,25 @@ app = Flask(__name__)
 def main():
     resp = make_base_answer(request.json)
     user_id = request.json["session"]["session_id"]
-    if request.json["session"]["new"]:
+    data, result = load_user_data(user_id)
+    if request.json["session"]["new"] or not result:
         resp = create_session(request.json, resp)
         save_dialog(user_id=user_id, state="choice_difficult", resp=resp)
         return jsonify(resp)
-    data = load_user_data(user_id)
     state = data["dialog_state"]
     if state == "choice_difficult":
-        state = 'choice_categories'
         resp = choice_difficult(req=request.json, resp=resp, data=data)
+        state = 'choice_categories'
         save_dialog(user_id=user_id, state=state, resp=resp)
     elif state == "choice_categories":
-        state = 'asking'
         resp = choice_categories(req=request.json, resp=resp, data=data)
+        state = 'asking'
         save_dialog(user_id=user_id, state=state, resp=resp)
     elif state == "asking":
         resp, state = asking(req=request.json, resp=resp, data=data)
         save_dialog(user_id=user_id, state=state, resp=resp)
     elif state == "summarizing":
-        resp = summarizing(req=request.json, resp=resp, data=data)
+        resp, state = summarizing(req=request.json, resp=resp, data=data)
         save_dialog(user_id=user_id, state=state, resp=resp)
     else:
         raise Exception(f"Неизвестное состояние диалога: {state}")
@@ -71,7 +70,6 @@ def create_session(req, resp):
     ]
 
     create_user_memory(req["session"]["session_id"])
-    print('Create file')
     return resp
 
 
@@ -97,15 +95,18 @@ def save_dialog(user_id, state, resp):
         data = json.load(file)
         data["dialog_state"] = state
         data["last_resp"] = json.dumps(resp)
-    pprint(resp)
+    logging.debug(data)
     with open(f'data/users/{user_id}.json', 'w') as file:
         json.dump(data, file)
 
 
 def load_user_data(user_id):
-    with open(f'data/users/{user_id}.json') as file:
-        data = json.load(file)
-    return data
+    try:
+        with open(f'data/users/{user_id}.json') as file:
+            data = json.load(file)
+        return data, True
+    except FileNotFoundError:
+        return data, False
 
 
 def choice_difficult(req, resp, data):
@@ -152,10 +153,12 @@ def choice_difficult(req, resp, data):
 def asking(req, resp, data):
     check_answer(req, resp, data)
     if data['total_count_questions'] == data["current_question"]:
-        resp, state = do_new_question(req, resp, data)
-    state = 'summarizing'
-    resp = give_result(req, resp, data)
-    return resp, state
+        state = 'summarizing'
+
+        resp = give_result(req, resp, data)
+    resp = do_new_question(resp, data)
+
+    return resp
 
 
 def choice_categories(req, resp, data):
@@ -186,35 +189,21 @@ def summarizing(req, resp, data):
     return resp
 
 
-def do_new_question(req, resp, data):
-    state = 'asking'
-    used_questions = set(data["used_questions"])
-    cat = data["categories"]
-    diff = data["difficult"]
-    questions = database.give_questions(cat=cat, diff=diff)
-    for ques in questions:
-        if ques['id'] in used_questions:
-            continue
+def do_new_question(resp, data):
 
-        correct_answer = ques['correct_answer']
-        variants = database.get_variants(cat)[3:] + [correct_answer]
-        variants.sort()
-        data["correct_answer"] = correct_answer
-        data["current_question"] += 1
-        resp["response"]["text"] = resp["response"]["tts"] = f"\n {ques['text']}"
-        resp["response"]["buttons"] = [{"title": var,
-                                        "hide": True} for var in variants]
-        break
-    else:
-        # Все наши вопросы закончились -> пользователь считается победителем
-        state = 'summarizing'
-        resp = give_result(req, resp, data)
-    return resp, state
+    data["current_question"] += 1
+    variants = data["questions"]["current_question"]["variants"]
+    text = data["questions"]["current_question"]["text"]
+    resp["response"]["text"] = resp["response"]["tts"] = f"\n {text}"
+    resp["response"]["buttons"] = [{"title": var,
+                                    "hide": True} for var in variants]
+
+    return resp
 
 
 def check_answer(req, resp, data):
     answer = req['request']["original_utterance"].lower()
-    correct_answer = data["correct_answer"]
+    correct_answer = data["questions"]["current_question"]["correct_answer"]
     if answer == correct_answer:
         data["count_correct_answers"] += 1
         resp['response']['text'] = resp['response']['tts'] = 'Это правильный ответ'
@@ -228,4 +217,6 @@ def give_result(req, resp, data):
 
 
 if __name__ == '__main__':
+    logging.basicConfig(filename='server.log',
+                        level=logging.DEBUG)
     app.run(host='127.0.0.1', port=8000, debug=True)
