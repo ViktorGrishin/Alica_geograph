@@ -34,7 +34,7 @@ def give_questions(cat=-1, diff=-1):
         SELECT Questions.question_id, Questions.question_text, Questions.correct_answer, Questions.answer_format
         FROM Questions
         JOIN QuestionTypes ON Questions.type_id = QuestionTypes.type_id
-        WHERE QuestionTypes.type_name = '{mini_cat}';
+        WHERE QuestionTypes.type_name = "{mini_cat}";
         """
         cursor.execute(sql_query)
         data = cursor.fetchall()
@@ -52,9 +52,9 @@ def give_questions(cat=-1, diff=-1):
                 while data[1] in list_of_uncorrected_answer:
                     list_of_uncorrected_answer = [text[random.randint(0, len(text) - 1)].strip('\n') for i in range(3)]
 
-                request = {'id': data[0],
-                           'text': data[1],
-                           'correct_answer': data[2],
+                request = {'id': data[i][0],
+                           'text': data[i][1],
+                           'correct_answer': data[i][2],
                            'variants': list_of_uncorrected_answer}
             else:
                 corr_int_answer = int(data[i][2])
@@ -67,9 +67,9 @@ def give_questions(cat=-1, diff=-1):
                             f'{corr_int_answer}{turn[random.randint(0, 1)]}{random.randint(0, 100)}')
                     list_of_incorrect_answer.append(incorrect_answer)
 
-                    request = {'id': data[0],
-                               'text': data[1],
-                               'correct_answer': data[2],
+                    request = {'id': data[i][0],
+                               'text': data[i][1],
+                               'correct_answer': data[i][2],
                                'variants': list_of_incorrect_answer}
 
             big_request.append(request)
@@ -78,3 +78,4 @@ def give_questions(cat=-1, diff=-1):
         conn.close()
     return big_request
 
+# print(*give_questions(['Столицы'], diff=3), sep='\n')
