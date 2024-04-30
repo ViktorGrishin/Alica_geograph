@@ -158,7 +158,7 @@ def choice_categories(req, resp, data):
         questions = database.give_questions(cat=data["categories"], diff=data["total_count_questions"])
         data["questions"].extend(questions)
         data["total_count_questions"] = len(data["questions"])
-        resp = make_question(resp, data)
+        resp, data = make_question(resp, data)
         data["dialog_state"] = 'asking'
         return resp, data
     for cat in cats:
@@ -184,7 +184,8 @@ def choice_categories(req, resp, data):
 
 
 def make_question(resp, data):
-    variants = data["questions"][data["current_question"]]["variants"]
+    variants = data["questions"][data["current_question"]]["variants"] + [
+        data["questions"][data["current_question"]]["correct_answer"]]
     text = data["questions"][data["current_question"]]["text"]
     resp["response"]["text"] = resp["response"]["tts"] = resp["response"]["text"] + text
     resp["response"]["buttons"] = [{"title": var,
@@ -199,7 +200,8 @@ def asking(req, resp, data):
     if data['total_count_questions'] == data["current_question"]:
         resp = give_result(req, resp, data)
         data["dialog_state"] = 'restart'
-    resp, data = make_question(resp, data)
+    else:
+        resp, data = make_question(resp, data)
 
     return resp, data
 
@@ -230,12 +232,13 @@ def restart(req, resp, data):
 
 def check_answer(req, resp, data):
     answer = req['request']["original_utterance"].lower()
-    correct_answer = data["questions"][data["current_question"]]["correct_answer"]
-    if answer == correct_answer:
+    correct_answer = data["questions"][data["current_question"] - 1]["correct_answer"]
+    if answer == correct_answer.lower():
         data["count_correct_answers"] += 1
-        resp['response']['text'] = resp['response']['tts'] = 'Это правильный ответ'
+        resp['response']['text'] = resp['response']['tts'] = 'Это правильный ответ \n '
     else:
-        resp['response']['text'] = resp['response']['tts'] = 'К сожалению, это не так'
+        resp['response']['text'] = resp['response'][
+            'tts'] = f'К сожалению, это не так. Верный ответ - {correct_answer} \n '
     return resp
 
 

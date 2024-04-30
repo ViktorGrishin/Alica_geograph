@@ -1,4 +1,3 @@
 flask
-logging
 datetime
 schedule
