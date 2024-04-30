@@ -21,7 +21,7 @@ def main():
         resp, data = choice_categories(req=request.json, resp=resp, data=data)
     elif state == "asking":
         resp, data = asking(req=request.json, resp=resp, data=data)
-    elif state == "summarizing":
+    elif state == "restart":
         resp, data = restart(req=request.json, resp=resp, data=data)
     else:
         raise Exception(f"Неизвестное состояние диалога: {state}")
@@ -152,8 +152,9 @@ def choice_categories(req, resp, data):
         data["categories"].extend([cats])
         data["questions"].extend(database.give_questions(cat=-1, diff=data["total_count_questions"]))
         data["total_count_questions"] = len(data["questions"])
-        resp = make_question(resp, data)
-        return resp, 'asking'
+        resp, data = make_question(resp, data)
+        data["dialog_state"] = 'asking'
+        return resp, data
     if chosen_cat.lower() == 'закончили':
         questions = database.give_questions(cat=data["categories"], diff=data["total_count_questions"])
         data["questions"].extend(questions)
@@ -207,27 +208,35 @@ def asking(req, resp, data):
 
 
 def restart(req, resp, data):
-    # resp["response"]["text"] = '''Привет, в этом навыке мы проверим твоё знание по предмету "География". Начинаем!
-    # Выберите уровень сложности:'''
-    # resp["response"]["tts"] = resp["response"]["text"]
-    # resp["response"]["buttons"] = [
-    #     {
-    #         "title": "Базовый",
-    #         "hide": True
-    #     },
-    #
-    #     {
-    #         "title": "Средний",
-    #         "hide": True
-    #     },
-    #
-    #     {
-    #         "title": "Сложный",
-    #         "hide": True
-    #     }
-    # ]
+    answer = req['request']["original_utterance"].lower()
+    if answer.startswith('д'):
 
-    return resp
+        resp["response"]["text"] = '''Выберите уровень сложности:'''
+        resp["response"]["tts"] = resp["response"]["text"]
+        resp["response"]["buttons"] = [
+            {
+                "title": "Базовый",
+                "hide": True
+            },
+
+            {
+                "title": "Средний",
+                "hide": True
+            },
+
+            {
+                "title": "Сложный",
+                "hide": True
+            }
+        ]
+        data["dialog_state"] = 'choice_difficult'
+        return resp, data
+    else:
+
+        resp["response"]["text"] = 'Спасибо за игру, до встречи!'
+        resp["response"]["tts"] = resp["response"]["text"]
+        resp["end_session"] = True
+        return resp, {}
 
 
 def check_answer(req, resp, data):
@@ -243,6 +252,13 @@ def check_answer(req, resp, data):
 
 
 def give_result(req, resp, data):
+    correct = data["count_correct_answers"]
+    total = data["total_count_questions"]
+    perc = round(correct * 100 / total, 2)
+    resp['response']['text'] = resp['response']['tts'] = resp['response']['text'] + f"""Поздравляем, тест закончен!
+Ваш результат: {correct} правильных ответа из {total}. Процент выполнения: {perc}%. Хотите попробовать снова?"""
+    resp['response']['buttons'] = [{"title": 'Да', "hide": True},
+                                   {"title": 'Нет', "hide": True}]
     return resp
 
 
