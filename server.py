@@ -1,8 +1,5 @@
-from pprint import pprint
-
 from flask import Flask, request, jsonify
 import json
-import logging
 import database
 
 app = Flask(__name__)
@@ -91,8 +88,7 @@ def create_user_memory(user_id, dialog_state="start_session"):
 
 
 def save_dialog(user_id, data, resp):
-    data["last_resp"] = resp
-    logging.debug(data)
+    data["last_resp"] = resp["response"]
     with open(f'data/users/{user_id}.json', 'w') as file:
         json.dump(data, file)
 
@@ -103,14 +99,14 @@ def load_user_data(user_id):
             data = json.load(file)
         return data, True
     except FileNotFoundError:
-        return data, False
+        return {}, False
 
 
 def choice_difficult(req, resp, data):
     tokens = req["request"]['nlu']["tokens"]
 
     if len(tokens) > 1:
-        resp = json.loads(data["last_resp"])
+        resp["response"] = data["last_resp"]["response"]
         resp["response"]["text"] = resp["response"]['tts'] = 'Мы вас не поняли, повторите пожалуйста свой выбор'
         return resp, data
     chosen_var = tokens[0].lower()
@@ -130,7 +126,7 @@ def choice_difficult(req, resp, data):
         data["current_question"] = 1
         data["count_correct_answers"] = 0
     else:
-        resp = json.loads(data["last_resp"])
+        resp["response"] = data["last_resp"]["response"]
         resp["response"]["text"] = resp["response"]['tts'] = 'Мы вас не поняли, повторите пожалуйста свой выбор'
         data["dialog_state"] = 'choice_difficult'
         return resp, data
@@ -151,28 +147,26 @@ def choice_difficult(req, resp, data):
 def choice_categories(req, resp, data):
     tokens = req["request"]['nlu']["tokens"]
     chosen_cat = tokens[0].lower()
-    cats = database.give_categories()
+    cats = [cat[0] for cat in database.give_categories()]
     if chosen_cat.lower() == 'все':
         data["categories"].extend([cats])
         data["questions"].extend(database.give_questions(cat=-1, diff=data["total_count_questions"]))
         data["total_count_questions"] = len(data["questions"])
         resp = make_question(resp, data)
         return resp, 'asking'
-    elif chosen_cat.lower() == 'закончили':
+    if chosen_cat.lower() == 'закончили':
         questions = database.give_questions(cat=data["categories"], diff=data["total_count_questions"])
         data["questions"].extend(questions)
         data["total_count_questions"] = len(data["questions"])
         resp = make_question(resp, data)
         data["dialog_state"] = 'asking'
         return resp, data
-
-    cats = [cat[0] for cat in cats]
     for cat in cats:
         if chosen_cat in cat.split()[0].lower():
             data["categories"].append(cat)
             break
     else:
-        resp = json.loads(data["last_resp"])
+        resp["response"] = data["last_resp"]["response"]
         resp["response"]["text"] = resp["response"]['tts'] = 'Мы вас не поняли, повторите пожалуйста свой выбор'
         data["dialog_state"] = 'choice_categories'
         return resp, data
@@ -190,14 +184,14 @@ def choice_categories(req, resp, data):
 
 
 def make_question(resp, data):
-    data["current_question"] += 1
     variants = data["questions"][data["current_question"]]["variants"]
     text = data["questions"][data["current_question"]]["text"]
     resp["response"]["text"] = resp["response"]["tts"] = resp["response"]["text"] + text
     resp["response"]["buttons"] = [{"title": var,
                                     "hide": True} for var in variants]
+    data["current_question"] += 1
 
-    return resp
+    return resp, data
 
 
 def asking(req, resp, data):
@@ -205,7 +199,7 @@ def asking(req, resp, data):
     if data['total_count_questions'] == data["current_question"]:
         resp = give_result(req, resp, data)
         data["dialog_state"] = 'restart'
-    resp = make_question(resp, data)
+    resp, data = make_question(resp, data)
 
     return resp, data
 
@@ -250,6 +244,4 @@ def give_result(req, resp, data):
 
 
 if __name__ == '__main__':
-    logging.basicConfig(filename='server.log',
-                        level=logging.DEBUG)
     app.run(host='127.0.0.1', port=8000, debug=True)
