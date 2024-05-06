@@ -2,11 +2,8 @@ import json
 import database
 import logging
 
-logging.basicConfig(filename='main.log',
-                    format='%(asctime)s %(name)s %(message)s')
 
 def main(event, context):
-    logging.debug('Запущена main')
     resp = make_base_answer(event)
     user_id = event["session"]["session_id"]
     data, result = load_user_data(user_id, resp)
@@ -28,12 +25,10 @@ def main(event, context):
         raise Exception(f"Неизвестное состояние диалога: {state}")
 
     resp, state = save_dialog(user_id=user_id, data=data, resp=resp)
-    logging.debug('main успешно завршена')
     return resp
 
 
 def make_base_answer(req):
-    logging.debug('Запущена make_base_answer')
     return {
         "response": {
             "text": "",
@@ -43,11 +38,11 @@ def make_base_answer(req):
 
         'session': req['session'],
         'version': req['version'],
+        'state': {},
     }
 
 
 def create_session(req, resp):
-    logging.debug('Запущена create_session')
     resp["response"]["text"] = '''Привет, в этом навыке мы проверим твоё знание по предмету "География". Начинаем!
 Выберите уровень сложности:'''
     resp["response"]["tts"] = resp["response"]["text"]
@@ -74,7 +69,6 @@ def create_session(req, resp):
 
 
 def create_user_memory(user_id, dialog_state="start_session"):
-    logging.debug('Запущена create_user_memory')
     data = {"user_id": user_id,
             "total_count_questions": -1,
             "current_question": -1,
@@ -91,16 +85,14 @@ def create_user_memory(user_id, dialog_state="start_session"):
 
 
 def save_dialog(user_id, data, resp):
-    logging.debug('Запущена save_dialog')
-    data["last_resp"] = resp["response"]
-    resp["session"]["state"] = data
+    resp["state"]["session"] = data
     return resp, data["dialog_state"]
 
 
 def load_user_data(user_id, resp):
     logging.debug('Запущена load_user_data')
-    if "state" in resp:
-        data = resp["session"]["state"]
+    if "state" in resp and "session" in resp["session"]:
+        data = resp["state"]["session"]
         return data, True
     return {}, False
 
@@ -270,5 +262,3 @@ def give_result(req, resp, data):
     resp['response']['buttons'] = [{"title": 'Да', "hide": True},
                                    {"title": 'Нет', "hide": True}]
     return resp
-
-
