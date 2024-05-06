@@ -1,8 +1,12 @@
 import json
 import database
+import logging
 
+logging.basicConfig(filename='main.log',
+                    format='%(asctime)s %(name)s %(message)s')
 
 def main(event, context):
+    logging.debug('Запущена main')
     resp = make_base_answer(event)
     user_id = event["session"]["session_id"]
     data, result = load_user_data(user_id, resp)
@@ -20,13 +24,16 @@ def main(event, context):
     elif state == "restart":
         resp, data = restart(req=event, resp=resp, data=data)
     else:
+        logging.warning(f"Неизвестное состояние диалога: {state}")
         raise Exception(f"Неизвестное состояние диалога: {state}")
 
     resp, state = save_dialog(user_id=user_id, data=data, resp=resp)
+    logging.debug('main успешно завршена')
     return resp
 
 
 def make_base_answer(req):
+    logging.debug('Запущена make_base_answer')
     return {
         "response": {
             "text": "",
@@ -40,6 +47,7 @@ def make_base_answer(req):
 
 
 def create_session(req, resp):
+    logging.debug('Запущена create_session')
     resp["response"]["text"] = '''Привет, в этом навыке мы проверим твоё знание по предмету "География". Начинаем!
 Выберите уровень сложности:'''
     resp["response"]["tts"] = resp["response"]["text"]
@@ -66,6 +74,7 @@ def create_session(req, resp):
 
 
 def create_user_memory(user_id, dialog_state="start_session"):
+    logging.debug('Запущена create_user_memory')
     data = {"user_id": user_id,
             "total_count_questions": -1,
             "current_question": -1,
@@ -82,12 +91,14 @@ def create_user_memory(user_id, dialog_state="start_session"):
 
 
 def save_dialog(user_id, data, resp):
+    logging.debug('Запущена save_dialog')
     data["last_resp"] = resp["response"]
     resp["session"]["state"] = data
     return resp, data["dialog_state"]
 
 
 def load_user_data(user_id, resp):
+    logging.debug('Запущена load_user_data')
     if "state" in resp:
         data = resp["session"]["state"]
         return data, True
@@ -95,6 +106,7 @@ def load_user_data(user_id, resp):
 
 
 def choice_difficult(req, resp, data):
+    logging.debug('Запущена choice_difficult')
     tokens = req["request"]['nlu']["tokens"]
 
     if len(tokens) > 1:
@@ -137,6 +149,7 @@ def choice_difficult(req, resp, data):
 
 
 def choice_categories(req, resp, data):
+    logging.debug('Запущена choice_categories')
     tokens = req["request"]['nlu']["tokens"]
     chosen_cat = tokens[0].lower()
     cats = [cat[0] for cat in database.give_categories()]
@@ -177,6 +190,7 @@ def choice_categories(req, resp, data):
 
 
 def make_question(resp, data):
+    logging.debug('Запущена make_question')
     variants = data["questions"][data["current_question"]]["variants"] + [
         data["questions"][data["current_question"]]["correct_answer"]]
     text = data["questions"][data["current_question"]]["text"]
@@ -189,6 +203,7 @@ def make_question(resp, data):
 
 
 def asking(req, resp, data):
+    logging.debug('Запущена asking')
     check_answer(req, resp, data)
     if data['total_count_questions'] == data["current_question"]:
         resp = give_result(req, resp, data)
@@ -200,6 +215,7 @@ def asking(req, resp, data):
 
 
 def restart(req, resp, data):
+    logging.debug('Запущена restart')
     answer = req['request']["original_utterance"].lower()
     if answer.startswith('д'):
 
@@ -232,6 +248,7 @@ def restart(req, resp, data):
 
 
 def check_answer(req, resp, data):
+    logging.debug('Запущена check_answer')
     answer = req['request']["original_utterance"].lower()
     correct_answer = data["questions"][data["current_question"] - 1]["correct_answer"]
     if answer == correct_answer.lower():
@@ -244,6 +261,7 @@ def check_answer(req, resp, data):
 
 
 def give_result(req, resp, data):
+    logging.debug('Запущена give_result')
     correct = data["count_correct_answers"]
     total = data["total_count_questions"]
     perc = round(correct * 100 / total, 2)
