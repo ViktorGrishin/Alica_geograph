@@ -1,4 +1,3 @@
-import json
 import database
 import logging
 
@@ -90,7 +89,6 @@ def save_dialog(user_id, data, resp):
 
 
 def load_user_data(user_id, resp):
-    logging.debug('Запущена load_user_data')
     if "state" in resp and "session" in resp["session"]:
         data = resp["state"]["session"]
         return data, True
@@ -98,7 +96,6 @@ def load_user_data(user_id, resp):
 
 
 def choice_difficult(req, resp, data):
-    logging.debug('Запущена choice_difficult')
     tokens = req["request"]['nlu']["tokens"]
 
     if len(tokens) > 1:
@@ -121,14 +118,11 @@ def choice_difficult(req, resp, data):
         data["difficult"] = 2
         data["current_question"] = 1
         data["count_correct_answers"] = 0
-    else:
-        resp["response"] = data["last_resp"]["response"]
-        resp["response"]["text"] = resp["response"]['tts'] = 'Мы вас не поняли, повторите пожалуйста свой выбор'
-        data["dialog_state"] = 'choice_difficult'
-        return resp, data
-
-    with open(f'data/users/{req["session"]["session_id"]}.json', 'w') as file:
-        json.dump(data, file)
+    # # else:
+    # #     resp["response"] = data["last_resp"]["response"]
+    # #     resp["response"]["text"] = resp["response"]['tts'] = 'Мы вас не поняли, повторите пожалуйста свой выбор'
+    # #     data["dialog_state"] = 'choice_difficult'
+    # #     return resp, data
 
     resp["response"]["text"] = resp["response"]['tts'] = 'Теперь выберите категории вопросов'
     categories = [cat[0] for cat in database.give_categories()]
@@ -141,7 +135,6 @@ def choice_difficult(req, resp, data):
 
 
 def choice_categories(req, resp, data):
-    logging.debug('Запущена choice_categories')
     tokens = req["request"]['nlu']["tokens"]
     chosen_cat = tokens[0].lower()
     cats = [cat[0] for cat in database.give_categories()]
@@ -163,11 +156,11 @@ def choice_categories(req, resp, data):
         if chosen_cat in cat.split()[0].lower():
             data["categories"].append(cat)
             break
-    else:
-        resp["response"] = data["last_resp"]["response"]
-        resp["response"]["text"] = resp["response"]['tts'] = 'Мы вас не поняли, повторите пожалуйста свой выбор'
-        data["dialog_state"] = 'choice_categories'
-        return resp, data
+    # # else:
+    # #     resp["response"] = data["last_resp"]["response"]
+    # #     resp["response"]["text"] = resp["response"]['tts'] = 'Мы вас не поняли, повторите пожалуйста свой выбор'
+    # #     data["dialog_state"] = 'choice_categories'
+    # #     return resp, data
 
     resp["response"]["text"] = resp["response"]['tts'] = 'Теперь выберите дополнительные категории вопросов'
     categories = [cat[0] for cat in database.give_categories()]
@@ -182,10 +175,11 @@ def choice_categories(req, resp, data):
 
 
 def make_question(resp, data):
-    logging.debug('Запущена make_question')
     variants = data["questions"][data["current_question"]]["variants"] + [
         data["questions"][data["current_question"]]["correct_answer"]]
     text = data["questions"][data["current_question"]]["text"]
+
+    # Создание resp с вопросом
     resp["response"]["text"] = resp["response"]["tts"] = resp["response"]["text"] + text
     resp["response"]["buttons"] = [{"title": var,
                                     "hide": True} for var in variants]
@@ -195,7 +189,6 @@ def make_question(resp, data):
 
 
 def asking(req, resp, data):
-    logging.debug('Запущена asking')
     check_answer(req, resp, data)
     if data['total_count_questions'] == data["current_question"]:
         resp = give_result(req, resp, data)
@@ -207,7 +200,6 @@ def asking(req, resp, data):
 
 
 def restart(req, resp, data):
-    logging.debug('Запущена restart')
     answer = req['request']["original_utterance"].lower()
     if answer.startswith('д'):
 
@@ -229,6 +221,7 @@ def restart(req, resp, data):
                 "hide": True
             }
         ]
+        data = create_user_memory(req["session"]["session_id"])
         data["dialog_state"] = 'choice_difficult'
         return resp, data
     else:
@@ -240,7 +233,6 @@ def restart(req, resp, data):
 
 
 def check_answer(req, resp, data):
-    logging.debug('Запущена check_answer')
     answer = req['request']["original_utterance"].lower()
     correct_answer = data["questions"][data["current_question"] - 1]["correct_answer"]
     if answer == correct_answer.lower():
@@ -253,7 +245,6 @@ def check_answer(req, resp, data):
 
 
 def give_result(req, resp, data):
-    logging.debug('Запущена give_result')
     correct = data["count_correct_answers"]
     total = data["total_count_questions"]
     perc = round(correct * 100 / total, 2)
