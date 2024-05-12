@@ -1,7 +1,10 @@
+import json
+from pprint import pprint
+
 import database
 
-
 memory = dict()
+
 
 def main(event, context):
     resp = make_base_answer(event)
@@ -84,7 +87,6 @@ def create_user_memory(user_id, dialog_state="start_session"):
 
 def save_dialog(user_id, data, resp):
     data["last_resp"] = resp["response"]
-
     memory[user_id] = data
 
 
@@ -122,7 +124,6 @@ def choice_difficult(req, resp, data):
         data["dialog_state"] = 'choice_difficult'
         return resp, data
 
-
     resp["response"]["text"] = resp["response"]['tts'] = 'Теперь выберите категории вопросов'
     categories = [cat[0] for cat in database.give_categories()]
 
@@ -138,7 +139,7 @@ def choice_categories(req, resp, data):
     chosen_cat = tokens[0].lower()
     cats = [cat[0] for cat in database.give_categories()]
     if chosen_cat.lower() == 'все':
-        data["categories"].extend([cats])
+        data["categories"].extend(cats)
         data["questions"].extend(database.give_questions(cat=-1, diff=data["total_count_questions"]))
         data["total_count_questions"] = len(data["questions"])
         resp, data = make_question(resp, data)
@@ -251,3 +252,64 @@ def give_result(req, resp, data):
     return resp
 
 
+req = json.loads('''{
+  "meta": {
+    "locale": "ru-RU",
+    "timezone": "UTC",
+    "client_id": "ru.yandex.searchplugin/7.16 (none none; android 4.4.2)",
+    "interfaces": {
+      "screen": {},
+      "payments": {},
+      "account_linking": {}
+    }
+  },
+  "session": {
+    "message_id": 3,
+    "session_id": "89ebc72d-d280-428d-a7b5-b3240393e229",
+    "skill_id": "c0524cab-4816-429d-96f4-1858a8af78d2",
+    "user": {
+      "user_id": "6A7CE54FB58448403FDAC998F5888FBD993825C8E215D14E8FA457DD87B0FB08"
+    },
+    "application": {
+      "application_id": "4C42EED795209E9477FAAB42FF5B68AB83558FB4E3A34D470C38EA21ECAC7800"
+    },
+    "new": false,
+    "user_id": "4C42EED795209E9477FAAB42FF5B68AB83558FB4E3A34D470C38EA21ECAC7800"
+  },
+  "request": {
+    "command": "все",
+    "original_utterance": "Все",
+    "nlu": {
+      "tokens": [
+        "все"
+      ],
+      "entities": [],
+      "intents": {}
+    },
+    "markup": {
+      "dangerous_context": false
+    },
+    "type": "SimpleUtterance"
+  },
+  "state": {
+    "session": {},
+    "user": {},
+    "application": {}
+  },
+  "version": "1.0"
+}''')
+resp, data = choice_categories(req=req, data={"user_id": 1,
+                                                 "total_count_questions": -1,
+                                                 "current_question": -1,
+                                                 "count_correct_answers": -1,
+                                                 "dialog_state": 'choice_categories',
+                                                 "categories": [],
+                                                 "last_resp": None,
+                                                 "difficult": -1,
+                                                 "questions": [],
+                                                 "correct_answer": "",
+                                                 }, resp=make_base_answer(req))
+
+pprint(resp)
+print('\n')
+pprint(data)
