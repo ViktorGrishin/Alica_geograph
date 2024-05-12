@@ -79,3 +79,7 @@ def give_questions(cat=-1, diff=-1):
     return big_request
 
 # print(*give_questions(['Столицы'], diff=3), sep='\n')
+
+
+# print(give_categories())
+print(give_questions(cat=-1, diff=7))
