@@ -1,33 +1,29 @@
-from flask import Flask, request, jsonify
 import json
 import database
 
-app = Flask(__name__)
 
-
-@app.route('/post', methods=['POST'])
-def main():
-    resp = make_base_answer(request.json)
-    user_id = request.json["session"]["session_id"]
-    data, result = load_user_data(user_id)
-    if request.json["session"]["new"] or not result:
-        resp, data = create_session(request.json, resp)
-        save_dialog(user_id=user_id, data=data, resp=resp)
-        return jsonify(resp)
+def main(event, context):
+    resp = make_base_answer(event)
+    user_id = event["session"]["session_id"]
+    data, result = load_user_data(resp)
+    if event["session"]["new"] or not result:
+        resp, data = create_session(event, resp)
+        resp = save_dialog(data=data, resp=resp)
+        return resp
     state = data["dialog_state"]
     if state == "choice_difficult":
-        resp, data = choice_difficult(req=request.json, resp=resp, data=data)
+        resp, data = choice_difficult(req=event, resp=resp, data=data)
     elif state == "choice_categories":
-        resp, data = choice_categories(req=request.json, resp=resp, data=data)
+        resp, data = choice_categories(req=event, resp=resp, data=data)
     elif state == "asking":
-        resp, data = asking(req=request.json, resp=resp, data=data)
+        resp, data = asking(req=event, resp=resp, data=data)
     elif state == "restart":
-        resp, data = restart(req=request.json, resp=resp, data=data)
+        resp, data = restart(req=event, resp=resp, data=data)
     else:
         raise Exception(f"Неизвестное состояние диалога: {state}")
 
-    save_dialog(user_id=user_id, data=data, resp=resp)
-    return jsonify(resp)
+    resp, state = save_dialog(user_id=user_id, data=data, resp=resp)
+    return resp
 
 
 def make_base_answer(req):
@@ -40,6 +36,7 @@ def make_base_answer(req):
 
         'session': req['session'],
         'version': req['version'],
+        'state': {},
     }
 
 
@@ -69,37 +66,28 @@ def create_session(req, resp):
     return resp, data
 
 
-def create_user_memory(user_id, dialog_state="start_session"):
-    data = {"user_id": user_id,
-            "total_count_questions": -1,
-            "current_question": -1,
-            "count_correct_answers": -1,
+def create_user_memory(dialog_state="start_session"):
+    data = {"used_questions": [],
+            "count": 0,
+            "correct_answers": 0,
+            "answer": "",
             "dialog_state": dialog_state,
             "categories": [],
-            "last_resp": None,
-            "difficult": -1,
-            "questions": [],
-            "correct_answer": "",
             }
 
-    with open(f"data/users/{user_id}.json", 'w') as file:
-        json.dump(data, file)
     return data
 
 
-def save_dialog(user_id, data, resp):
-    data["last_resp"] = resp["response"]
-    with open(f'data/users/{user_id}.json', 'w') as file:
-        json.dump(data, file)
+def save_dialog(data, resp):
+    resp["state"]["session"] = data
+    return resp
 
 
-def load_user_data(user_id):
-    try:
-        with open(f'data/users/{user_id}.json') as file:
-            data = json.load(file)
+def load_user_data(resp):
+    if "state" in resp and "session" in resp["session"]:
+        data = resp["state"]["session"]
         return data, True
-    except FileNotFoundError:
-        return {}, False
+    return {}, False
 
 
 def choice_difficult(req, resp, data):
@@ -150,15 +138,12 @@ def choice_categories(req, resp, data):
     cats = [cat[0] for cat in database.give_categories()]
     if chosen_cat.lower() == 'все':
         data["categories"].extend([cats])
-        data["questions"].extend(database.give_questions(cat=-1, diff=data["total_count_questions"]))
-        data["total_count_questions"] = len(data["questions"])
+        data["count"] = 10
         resp, data = make_question(resp, data)
         data["dialog_state"] = 'asking'
         return resp, data
     if chosen_cat.lower() == 'закончили':
-        questions = database.give_questions(cat=data["categories"], diff=data["total_count_questions"])
-        data["questions"].extend(questions)
-        data["total_count_questions"] = len(data["questions"])
+        data["count"] = 10
         resp, data = make_question(resp, data)
         data["dialog_state"] = 'asking'
         return resp, data
@@ -185,26 +170,34 @@ def choice_categories(req, resp, data):
 
 
 def make_question(resp, data):
-    variants = data["questions"][data["current_question"]]["variants"] + [
-        data["questions"][data["current_question"]]["correct_answer"]]
-    text = data["questions"][data["current_question"]]["text"]
-    resp["response"]["text"] = resp["response"]["tts"] = resp["response"]["text"] + text
-    resp["response"]["buttons"] = [{"title": var,
-                                    "hide": True} for var in variants]
-    data["current_question"] += 1
+    quest = database.give_questions(cat=data["categories"], cant_use=data["used_questions"])
+    if quest:
+        data["used_questions"].append(quest["id"])
+        text = quest["text"]
+        resp["response"]["text"] = resp["response"]["tts"] = resp["response"]["text"] + text
+        resp["response"]["buttons"] = [{"title": var,
+                                        "hide": True} for var in quest["variants"]]
+        data["answer"] = quest["correct_answer"]
 
-    return resp, data
+        return resp, data, True
+    else:
+        return resp, data, False
 
 
 def asking(req, resp, data):
     check_answer(req, resp, data)
-    if data['total_count_questions'] == data["current_question"]:
+    if data['total_count_questions'] == len(data["used_questions"]):
         resp = give_result(req, resp, data)
         data["dialog_state"] = 'restart'
+        return resp, data
     else:
-        resp, data = make_question(resp, data)
-
-    return resp, data
+        resp, data, is_result = make_question(resp, data)
+        if is_result:
+            return resp, data
+        else:
+            resp = give_result(req, resp, data)
+            data["dialog_state"] = 'restart'
+            return resp, data
 
 
 def restart(req, resp, data):
@@ -241,7 +234,7 @@ def restart(req, resp, data):
 
 def check_answer(req, resp, data):
     answer = req['request']["original_utterance"].lower()
-    correct_answer = data["questions"][data["current_question"] - 1]["correct_answer"]
+    correct_answer = data["answer"]
     if answer == correct_answer.lower():
         data["count_correct_answers"] += 1
         resp['response']['text'] = resp['response']['tts'] = 'Это правильный ответ \n '
@@ -260,7 +253,3 @@ def give_result(req, resp, data):
     resp['response']['buttons'] = [{"title": 'Да', "hide": True},
                                    {"title": 'Нет', "hide": True}]
     return resp
-
-
-if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=8000, debug=True)

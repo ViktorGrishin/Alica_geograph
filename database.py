@@ -72,4 +72,3 @@ def give_questions(cat=-1, cant_use=['1000']):
     return request
 
 
-print(*give_questions(['Озера'], cant_use=[93, 94, 95, 96]), sep='\n')
