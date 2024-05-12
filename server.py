@@ -1,33 +1,30 @@
-from flask import Flask, request, jsonify
-import json
 import database
 
-app = Flask(__name__)
 
+memory = dict()
 
-@app.route('/post', methods=['POST'])
-def main():
-    resp = make_base_answer(request.json)
-    user_id = request.json["session"]["session_id"]
-    data, result = load_user_data(user_id)
-    if request.json["session"]["new"] or not result:
-        resp, data = create_session(request.json, resp)
+def main(event, context):
+    resp = make_base_answer(event)
+    user_id = event["session"]["session_id"]
+    data = load_user_data(user_id)
+    if event["session"]["new"] or data is None:
+        resp, data = create_session(event, resp)
         save_dialog(user_id=user_id, data=data, resp=resp)
-        return jsonify(resp)
+        return resp
     state = data["dialog_state"]
     if state == "choice_difficult":
-        resp, data = choice_difficult(req=request.json, resp=resp, data=data)
+        resp, data = choice_difficult(req=event, resp=resp, data=data)
     elif state == "choice_categories":
-        resp, data = choice_categories(req=request.json, resp=resp, data=data)
+        resp, data = choice_categories(req=event, resp=resp, data=data)
     elif state == "asking":
-        resp, data = asking(req=request.json, resp=resp, data=data)
+        resp, data = asking(req=event, resp=resp, data=data)
     elif state == "restart":
-        resp, data = restart(req=request.json, resp=resp, data=data)
+        resp, data = restart(req=event, resp=resp, data=data)
     else:
         raise Exception(f"Неизвестное состояние диалога: {state}")
 
     save_dialog(user_id=user_id, data=data, resp=resp)
-    return jsonify(resp)
+    return resp
 
 
 def make_base_answer(req):
@@ -82,24 +79,18 @@ def create_user_memory(user_id, dialog_state="start_session"):
             "correct_answer": "",
             }
 
-    with open(f"data/users/{user_id}.json", 'w') as file:
-        json.dump(data, file)
     return data
 
 
 def save_dialog(user_id, data, resp):
     data["last_resp"] = resp["response"]
-    with open(f'data/users/{user_id}.json', 'w') as file:
-        json.dump(data, file)
+
+    memory[user_id] = data
 
 
 def load_user_data(user_id):
-    try:
-        with open(f'data/users/{user_id}.json') as file:
-            data = json.load(file)
-        return data, True
-    except FileNotFoundError:
-        return {}, False
+    data = memory.get(user_id, None)
+    return data
 
 
 def choice_difficult(req, resp, data):
@@ -131,8 +122,6 @@ def choice_difficult(req, resp, data):
         data["dialog_state"] = 'choice_difficult'
         return resp, data
 
-    with open(f'data/users/{req["session"]["session_id"]}.json', 'w') as file:
-        json.dump(data, file)
 
     resp["response"]["text"] = resp["response"]['tts'] = 'Теперь выберите категории вопросов'
     categories = [cat[0] for cat in database.give_categories()]
@@ -262,5 +251,4 @@ def give_result(req, resp, data):
     return resp
 
 
-if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=8000, debug=True)
+
